@@ -1,46 +1,47 @@
-name: Publish database-lib to npm
+# Publish to npm - Runs on version tags
+name: Publish to npm
 
 on:
   push:
     tags:
-      - 'v*.*.*'   # e.g. v1.0.0, v1.2.3
+      - "v*.*.*"
+    branches:
+      - master
 
 jobs:
   publish:
     name: Build & Publish
     runs-on: ubuntu-latest
-
     permissions:
       contents: read
-
+      id-token: write
     steps:
-      # 1) Checkout the repo
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 2) Use Node.js
-      - name: Use Node.js 20.x
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
 
-      # 3) Install dependencies
       - name: Install dependencies
         run: npm ci
 
-      # 4) Run build (TypeScript -> dist/)
-      - name: Build package
-        run: npm run build
+      - name: Run lint
+        run: npm run lint
 
-      # 5) Run tests (optional - replace with real tests later)
       - name: Run tests
         run: npm test
 
-      # 6) Publish to npm
+      - name: Build package
+        run: npm run build
+
+      - name: Verify package contents
+        run: npm pack --dry-run
+
       - name: Publish to npm
+        run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          echo "Publishing @ciscodeapps-template/database to npm..."
-          npm publish --access public

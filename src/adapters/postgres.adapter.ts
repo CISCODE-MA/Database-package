@@ -160,10 +160,31 @@ export class PostgresAdapter {
         const softDeleteEnabled = cfg.softDelete ?? false;
         const softDeleteField = cfg.softDeleteField ?? 'deleted_at';
 
+        // Timestamp configuration
+        const timestampsEnabled = cfg.timestamps ?? false;
+        const createdAtField = cfg.createdAtField ?? 'created_at';
+        const updatedAtField = cfg.updatedAtField ?? 'updated_at';
+
         // Create not-deleted filter for soft delete
         const notDeletedFilter: Record<string, unknown> = softDeleteEnabled
             ? { [softDeleteField]: { isNull: true } }
             : {};
+
+        // Helper to add createdAt timestamp
+        const addCreatedAt = <D extends Record<string, unknown>>(data: D): D => {
+            if (timestampsEnabled) {
+                return { ...data, [createdAtField]: new Date() };
+            }
+            return data;
+        };
+
+        // Helper to add updatedAt timestamp
+        const addUpdatedAt = <D extends Record<string, unknown>>(data: D): D => {
+            if (timestampsEnabled) {
+                return { ...data, [updatedAtField]: new Date() };
+            }
+            return data;
+        };
 
         const assertFieldAllowed = (field: string): void => {
             if (allowed.length && !allowed.includes(field)) {
@@ -236,7 +257,8 @@ export class PostgresAdapter {
 
         const repo: Repository<T> = {
             async create(data: Partial<T>): Promise<T> {
-                const [row] = await kx(table).insert(data).returning('*');
+                const timestampedData = addCreatedAt(data as Record<string, unknown>);
+                const [row] = await kx(table).insert(timestampedData).returning('*');
                 return row as T;
             },
 
@@ -280,10 +302,11 @@ export class PostgresAdapter {
 
             async updateById(id: string | number, update: Partial<T>): Promise<T | null> {
                 const mergedFilter = { ...baseFilter, ...notDeletedFilter };
+                const timestampedUpdate = addUpdatedAt(update as Record<string, unknown>);
                 const qb = kx(table)
                     .where({ [pk]: id });
                 applyFilter(qb, mergedFilter);
-                const [row] = await qb.update(update).returning('*');
+                const [row] = await qb.update(timestampedUpdate).returning('*');
                 return (row as T) || null;
             },
 
@@ -328,8 +351,13 @@ export class PostgresAdapter {
             async insertMany(data: Partial<T>[]): Promise<T[]> {
                 if (data.length === 0) return [];
 
+                // Add createdAt timestamp to each record
+                const timestampedData = data.map(item =>
+                    addCreatedAt(item as Record<string, unknown>)
+                );
+
                 const rows = await kx(table)
-                    .insert(data)
+                    .insert(timestampedData)
                     .returning('*');
 
                 return rows as T[];
@@ -337,10 +365,11 @@ export class PostgresAdapter {
 
             async updateMany(filter: Record<string, unknown>, update: Partial<T>): Promise<number> {
                 const mergedFilter = { ...baseFilter, ...notDeletedFilter, ...filter };
+                const timestampedUpdate = addUpdatedAt(update as Record<string, unknown>);
 
                 const affectedRows = await kx(table)
                     .modify((q) => applyFilter(q, mergedFilter))
-                    .update(update);
+                    .update(timestampedUpdate);
 
                 return affectedRows;
             },

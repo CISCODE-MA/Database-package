@@ -447,4 +447,123 @@ describe('MongoAdapter', () => {
             );
         });
     });
+
+    describe('Timestamps', () => {
+        it('should add createdAt on create when timestamps enabled', async () => {
+            const mockDoc = { _id: '1', name: 'Test', toObject: () => ({ _id: '1', name: 'Test' }) };
+            const mockModel = {
+                create: jest.fn().mockResolvedValue(mockDoc),
+            };
+
+            const repo = adapter.createRepository({ model: mockModel, timestamps: true });
+            await repo.create({ name: 'Test' });
+
+            expect(mockModel.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    name: 'Test',
+                    createdAt: expect.any(Date),
+                }),
+            );
+        });
+
+        it('should not add createdAt when timestamps disabled', async () => {
+            const mockDoc = { _id: '1', name: 'Test', toObject: () => ({ _id: '1', name: 'Test' }) };
+            const mockModel = {
+                create: jest.fn().mockResolvedValue(mockDoc),
+            };
+
+            const repo = adapter.createRepository({ model: mockModel, timestamps: false });
+            await repo.create({ name: 'Test' });
+
+            expect(mockModel.create).toHaveBeenCalledWith({ name: 'Test' });
+        });
+
+        it('should add updatedAt on updateById when timestamps enabled', async () => {
+            const mockModel = {
+                find: jest.fn().mockReturnThis(),
+                findOneAndUpdate: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockReturnValue({
+                        exec: jest.fn().mockResolvedValue({ _id: '1', name: 'Updated' }),
+                    }),
+                }),
+                lean: jest.fn().mockReturnThis(),
+                exec: jest.fn(),
+            };
+
+            const repo = adapter.createRepository({ model: mockModel, timestamps: true });
+            await repo.updateById('1', { name: 'Updated' });
+
+            expect(mockModel.findOneAndUpdate).toHaveBeenCalledWith(
+                { _id: '1' },
+                expect.objectContaining({
+                    name: 'Updated',
+                    updatedAt: expect.any(Date),
+                }),
+                { new: true },
+            );
+        });
+
+        it('should use custom timestamp fields', async () => {
+            const mockDoc = { _id: '1', name: 'Test', toObject: () => ({ _id: '1', name: 'Test' }) };
+            const mockModel = {
+                create: jest.fn().mockResolvedValue(mockDoc),
+            };
+
+            const repo = adapter.createRepository({
+                model: mockModel,
+                timestamps: true,
+                createdAtField: 'created',
+                updatedAtField: 'modified',
+            });
+            await repo.create({ name: 'Test' });
+
+            expect(mockModel.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    name: 'Test',
+                    created: expect.any(Date),
+                }),
+            );
+        });
+
+        it('should add createdAt to insertMany items when timestamps enabled', async () => {
+            const mockDocs = [
+                { _id: '1', name: 'John', toObject: () => ({ _id: '1', name: 'John' }) },
+                { _id: '2', name: 'Jane', toObject: () => ({ _id: '2', name: 'Jane' }) },
+            ];
+            const mockModel = {
+                insertMany: jest.fn().mockResolvedValue(mockDocs),
+            };
+
+            const repo = adapter.createRepository({ model: mockModel, timestamps: true });
+            await repo.insertMany([{ name: 'John' }, { name: 'Jane' }]);
+
+            expect(mockModel.insertMany).toHaveBeenCalledWith([
+                expect.objectContaining({ name: 'John', createdAt: expect.any(Date) }),
+                expect.objectContaining({ name: 'Jane', createdAt: expect.any(Date) }),
+            ]);
+        });
+
+        it('should add updatedAt to updateMany when timestamps enabled', async () => {
+            const mockModel = {
+                find: jest.fn().mockReturnThis(),
+                updateMany: jest.fn().mockReturnValue({
+                    exec: jest.fn().mockResolvedValue({ modifiedCount: 3 }),
+                }),
+                lean: jest.fn().mockReturnThis(),
+                exec: jest.fn(),
+            };
+
+            const repo = adapter.createRepository({ model: mockModel, timestamps: true });
+            await repo.updateMany({ status: 'pending' }, { status: 'active' });
+
+            expect(mockModel.updateMany).toHaveBeenCalledWith(
+                { status: 'pending' },
+                expect.objectContaining({
+                    status: 'active',
+                    updatedAt: expect.any(Date),
+                }),
+                {},
+            );
+        });
+    });
 });

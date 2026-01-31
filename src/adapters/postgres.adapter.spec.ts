@@ -393,4 +393,73 @@ describe('PostgresAdapter', () => {
             expect(typeof repo.findDeleted).toBe('function');
         });
     });
+
+    describe('Timestamps', () => {
+        it('should accept timestamps configuration option', () => {
+            adapter.connect();
+            const repo = adapter.createRepository({
+                table: 'users',
+                timestamps: true,
+            });
+
+            expect(repo).toBeDefined();
+            expect(typeof repo.create).toBe('function');
+        });
+
+        it('should accept custom timestamp field names', () => {
+            adapter.connect();
+            const repo = adapter.createRepository({
+                table: 'users',
+                timestamps: true,
+                createdAtField: 'date_created',
+                updatedAtField: 'date_modified',
+            });
+
+            expect(repo).toBeDefined();
+        });
+
+        it('should have all CRUD methods when timestamps enabled', () => {
+            adapter.connect();
+            const repo = adapter.createRepository({
+                table: 'users',
+                timestamps: true,
+            });
+
+            expect(typeof repo.create).toBe('function');
+            expect(typeof repo.findById).toBe('function');
+            expect(typeof repo.findAll).toBe('function');
+            expect(typeof repo.findPage).toBe('function');
+            expect(typeof repo.updateById).toBe('function');
+            expect(typeof repo.deleteById).toBe('function');
+            expect(typeof repo.insertMany).toBe('function');
+            expect(typeof repo.updateMany).toBe('function');
+            expect(typeof repo.deleteMany).toBe('function');
+        });
+
+        it('should work with both timestamps and soft delete enabled', () => {
+            adapter.connect();
+            const repo = adapter.createRepository({
+                table: 'users',
+                timestamps: true,
+                softDelete: true,
+                columns: ['id', 'name', 'created_at', 'updated_at', 'deleted_at'],
+            });
+
+            expect(repo).toBeDefined();
+            expect(typeof repo.create).toBe('function');
+            expect(typeof repo.softDelete).toBe('function');
+            expect(typeof repo.restore).toBe('function');
+        });
+
+        it('should use default field names when not specified', () => {
+            adapter.connect();
+            // Default: created_at, updated_at for PostgreSQL
+            const repo = adapter.createRepository({
+                table: 'users',
+                timestamps: true,
+            });
+
+            expect(repo).toBeDefined();
+        });
+    });
 });

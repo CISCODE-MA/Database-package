@@ -270,6 +270,19 @@ export interface MongoRepositoryOptions {
      * Field name for soft delete timestamp (default: 'deletedAt').
      */
     softDeleteField?: string;
+    /**
+     * Enable automatic timestamps (createdAt/updatedAt).
+     * When enabled, create will set createdAt and all updates will set updatedAt.
+     */
+    timestamps?: boolean;
+    /**
+     * Field name for created timestamp (default: 'createdAt').
+     */
+    createdAtField?: string;
+    /**
+     * Field name for updated timestamp (default: 'updatedAt').
+     */
+    updatedAtField?: string;
 }
 
 /**
@@ -299,6 +312,19 @@ export interface PostgresEntityConfig {
      * Field name for soft delete timestamp (default: 'deleted_at').
      */
     softDeleteField?: string;
+    /**
+     * Enable automatic timestamps (created_at/updated_at).
+     * When enabled, create will set created_at and all updates will set updated_at.
+     */
+    timestamps?: boolean;
+    /**
+     * Field name for created timestamp (default: 'created_at').
+     */
+    createdAtField?: string;
+    /**
+     * Field name for updated timestamp (default: 'updated_at').
+     */
+    updatedAtField?: string;
 }
 
 // -----------------------------

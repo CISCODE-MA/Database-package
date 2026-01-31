@@ -159,10 +159,31 @@ export class MongoAdapter {
         const softDeleteEnabled = opts.softDelete ?? false;
         const softDeleteField = opts.softDeleteField ?? 'deletedAt';
 
+        // Timestamp configuration
+        const timestampsEnabled = opts.timestamps ?? false;
+        const createdAtField = opts.createdAtField ?? 'createdAt';
+        const updatedAtField = opts.updatedAtField ?? 'updatedAt';
+
         // Base filter to exclude soft-deleted records
         const notDeletedFilter = softDeleteEnabled
             ? { [softDeleteField]: { $eq: null } }
             : {};
+
+        // Helper to add createdAt timestamp
+        const addCreatedAt = <D extends Record<string, unknown>>(data: D): D => {
+            if (timestampsEnabled) {
+                return { ...data, [createdAtField]: new Date() };
+            }
+            return data;
+        };
+
+        // Helper to add updatedAt timestamp
+        const addUpdatedAt = <D extends Record<string, unknown>>(data: D): D => {
+            if (timestampsEnabled) {
+                return { ...data, [updatedAtField]: new Date() };
+            }
+            return data;
+        };
 
         const shapePage = (
             data: T[],
@@ -176,9 +197,10 @@ export class MongoAdapter {
 
         const repo: Repository<T> = {
             async create(data: Partial<T>): Promise<T> {
+                const timestampedData = addCreatedAt(data as Record<string, unknown>);
                 const doc = session
-                    ? (await model.create([data], { session }))[0]
-                    : await model.create(data);
+                    ? (await model.create([timestampedData], { session }))[0]
+                    : await model.create(timestampedData);
                 return (doc as { toObject?: () => T }).toObject?.() ?? (doc as T);
             },
 
@@ -222,7 +244,8 @@ export class MongoAdapter {
 
             async updateById(id: string | number, update: Partial<T>): Promise<T | null> {
                 const mergedFilter = { _id: id, ...notDeletedFilter };
-                let query = model.findOneAndUpdate(mergedFilter, update, { new: true });
+                const timestampedUpdate = addUpdatedAt(update as Record<string, unknown>);
+                let query = model.findOneAndUpdate(mergedFilter, timestampedUpdate, { new: true });
                 if (session) query = query.session(session);
                 const doc = await query.lean().exec();
                 return doc as T | null;
@@ -272,9 +295,14 @@ export class MongoAdapter {
             async insertMany(data: Partial<T>[]): Promise<T[]> {
                 if (data.length === 0) return [];
 
+                // Add createdAt timestamp to each record
+                const timestampedData = data.map(item =>
+                    addCreatedAt(item as Record<string, unknown>)
+                );
+
                 const docs = session
-                    ? await model.insertMany(data, { session })
-                    : await model.insertMany(data);
+                    ? await model.insertMany(timestampedData, { session })
+                    : await model.insertMany(timestampedData);
 
                 return docs.map((doc) =>
                     (doc as { toObject?: () => T }).toObject?.() ?? (doc as T)
@@ -283,8 +311,9 @@ export class MongoAdapter {
 
             async updateMany(filter: Record<string, unknown>, update: Partial<T>): Promise<number> {
                 const mergedFilter = { ...filter, ...notDeletedFilter };
+                const timestampedUpdate = addUpdatedAt(update as Record<string, unknown>);
                 const options = session ? { session } : {};
-                const result = await model.updateMany(mergedFilter, update, options).exec();
+                const result = await model.updateMany(mergedFilter, timestampedUpdate, options).exec();
                 return result.modifiedCount;
             },
 

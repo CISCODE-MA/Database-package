@@ -1,146 +1,198 @@
-````md
-# @ciscodeapps-template/database
+# @ciscode/database-kit
 
-A framework-agnostic, Nest-friendly, OOP-style database library that gives you a single, consistent repository API for:
+A NestJS-friendly, OOP-style database library providing a unified repository API for **MongoDB** and **PostgreSQL**.
 
-- MongoDB (via Mongoose)
-- PostgreSQL (via Knex + pg)
-
-You create a `Database` instance with `{ type: 'mongo' | 'postgres', connectionString }`, then create repositories per entity.  
-Repositories expose the same methods regardless of the underlying DB (Mongo or Postgres).
+[![npm version](https://img.shields.io/npm/v/@ciscode/database-kit.svg)](https://www.npmjs.com/package/@ciscode/database-kit)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/node/v/@ciscode/database-kit.svg)](https://nodejs.org)
 
 ---
 
 ## ✨ Features
 
-- ✅ Works with MongoDB and PostgreSQL
-- ✅ OOP-style: create a `Database` object and repositories from it
-- ✅ Model-agnostic: you pass your own Mongoose model or table config
-- ✅ Same repository API for Mongo and Postgres:
-  - `create`
-  - `findById`
-  - `findAll`
-  - `findPage` (pagination)
-  - `updateById`
-  - `deleteById`
-  - `count`
-  - `exists`
-- ✅ Optional NestJS module with `DatabaseModule.forRoot()` and `@InjectDatabase()`
-- ✅ Safe filtering + pagination for building consistent REST endpoints
+- ✅ **Unified Repository API** - Same interface for MongoDB and PostgreSQL
+- ✅ **NestJS Integration** - First-class support with `DatabaseKitModule`
+- ✅ **TypeScript First** - Full type safety and IntelliSense
+- ✅ **Pagination Built-in** - Consistent pagination across databases
+- ✅ **Environment-Driven** - Zero hardcoding, all config from env vars
+- ✅ **Exception Handling** - Global exception filter for database errors
+- ✅ **Clean Architecture** - Follows CISCODE standards and best practices
 
 ---
 
 ## 📦 Installation
 
-> This assumes you’ve already set up your `.npmrc` to connect to your Azure Artifacts feed.
+```bash
+npm install @ciscode/database-kit
+```
 
-In your **project using the library**:
+### Peer Dependencies
+
+Make sure you have NestJS installed:
 
 ```bash
-npm install @ciscodeapps-template/database
-````
+npm install @nestjs/common @nestjs/core reflect-metadata
+```
 
-Make sure you also have **Mongoose** or **Postgres** available, depending on what you’re using:
+### Database Drivers
+
+Install the driver for your database:
 
 ```bash
-# For MongoDB projects
+# For MongoDB
 npm install mongoose
 
-# For Postgres projects
+# For PostgreSQL
 npm install pg
 ```
 
-> The library itself already depends on `knex` and `pg`, but you still need the actual database & connection string.
-
 ---
 
-## 🧠 Core Concepts
+## 🚀 Quick Start
 
-* A **Database instance** represents a connection to **one** database:
+### 1. Import the Module
 
-  * `{ type: 'mongo', connectionString: MONGO_URI }`
-  * `{ type: 'postgres', connectionString: PG_URI }`
-* From that instance, you create **repositories** for your entities:
+```typescript
+// app.module.ts
+import { Module } from "@nestjs/common";
+import { DatabaseKitModule } from "@ciscode/database-kit";
 
-  * For Mongo, repositories are bound to **Mongoose models**.
-  * For Postgres, repositories are bound to a **table config** (`PostgresEntityConfig`).
-* A repository gives you a **simple CRUD + pagination API** that your endpoints can use.
-
----
-
-## 🚀 Quick Start (Plain Node / Express)
-
-### 1. Create a Database instance (MongoDB example)
-
-```ts
-import { Database } from '@ciscodeapps-template/database';
-import UserModel from './models/user.model'; // your own Mongoose model
-
-// 1) Create the Database instance
-const mongoDb = new Database({
-  type: 'mongo',
-  connectionString: process.env.MONGO_URI as string,
-});
-
-// 2) Connect once at startup
-await mongoDb.connect();
-
-// 3) Create a repository for an entity
-const usersRepo = mongoDb.createMongoRepository<{ _id: string; name: string }>({
-  model: UserModel,
-});
+@Module({
+  imports: [
+    DatabaseKitModule.forRoot({
+      config: {
+        type: "mongo", // or 'postgres'
+        connectionString: process.env.MONGO_URI!,
+      },
+    }),
+  ],
+})
+export class AppModule {}
 ```
 
-### 2. PostgreSQL example
+### 2. Inject and Use
 
-```ts
-import { Database } from '@ciscodeapps-template/database';
+```typescript
+// users.service.ts
+import { Injectable } from "@nestjs/common";
+import {
+  InjectDatabase,
+  DatabaseService,
+  Repository,
+} from "@ciscode/database-kit";
+import { UserModel } from "./user.model";
 
-interface Order {
-  id: string;
-  user_id: string;
-  total: number;
-  created_at: string;
+interface User {
+  _id: string;
+  name: string;
+  email: string;
 }
 
-const pgDb = new Database({
-  type: 'postgres',
-  connectionString: process.env.PG_URI as string,
-});
+@Injectable()
+export class UsersService {
+  private readonly usersRepo: Repository<User>;
 
-await pgDb.connect();
+  constructor(@InjectDatabase() private readonly db: DatabaseService) {
+    this.usersRepo = db.createMongoRepository<User>({ model: UserModel });
+  }
 
-const ordersRepo = pgDb.createPostgresRepository<Order>({
-  table: 'orders',
-  primaryKey: 'id',
-  columns: ['id', 'user_id', 'total', 'created_at', 'is_deleted'],
-  defaultFilter: { is_deleted: false }, // soft-delete convention
-});
+  async createUser(data: Partial<User>): Promise<User> {
+    return this.usersRepo.create(data);
+  }
+
+  async getUser(id: string): Promise<User | null> {
+    return this.usersRepo.findById(id);
+  }
+
+  async listUsers(page = 1, limit = 10) {
+    return this.usersRepo.findPage({ page, limit });
+  }
+}
 ```
 
 ---
 
-## 🧱 Repository API
+## ⚙️ Configuration
 
-Both Mongo and Postgres repositories expose the same methods:
+### Environment Variables
 
-```ts
-interface Repository<T = any, Filter = Record<string, any>> {
+| Variable                      | Description                              | Required       |
+| ----------------------------- | ---------------------------------------- | -------------- |
+| `DATABASE_TYPE`               | Database type (`mongo` or `postgres`)    | Yes            |
+| `MONGO_URI`                   | MongoDB connection string                | For MongoDB    |
+| `DATABASE_URL`                | PostgreSQL connection string             | For PostgreSQL |
+| `DATABASE_POOL_SIZE`          | Connection pool size (default: 10)       | No             |
+| `DATABASE_CONNECTION_TIMEOUT` | Connection timeout in ms (default: 5000) | No             |
+
+### Synchronous Configuration
+
+```typescript
+DatabaseKitModule.forRoot({
+  config: {
+    type: "postgres",
+    connectionString: "postgresql://user:pass@localhost:5432/mydb",
+  },
+  autoConnect: true, // default: true
+});
+```
+
+### Async Configuration (Recommended)
+
+```typescript
+import { ConfigModule, ConfigService } from "@nestjs/config";
+
+DatabaseKitModule.forRootAsync({
+  imports: [ConfigModule],
+  useFactory: (config: ConfigService) => ({
+    config: {
+      type: config.get("DATABASE_TYPE") as "mongo" | "postgres",
+      connectionString: config.get("DATABASE_URL")!,
+    },
+  }),
+  inject: [ConfigService],
+});
+```
+
+### Multiple Databases
+
+```typescript
+@Module({
+  imports: [
+    // Primary database
+    DatabaseKitModule.forRoot({
+      config: { type: "mongo", connectionString: process.env.MONGO_URI! },
+    }),
+    // Analytics database
+    DatabaseKitModule.forFeature("ANALYTICS_DB", {
+      type: "postgres",
+      connectionString: process.env.ANALYTICS_DB_URL!,
+    }),
+  ],
+})
+export class AppModule {}
+
+// Usage
+@Injectable()
+export class AnalyticsService {
+  constructor(
+    @InjectDatabaseByToken("ANALYTICS_DB")
+    private readonly analyticsDb: DatabaseService,
+  ) {}
+}
+```
+
+---
+
+## 📖 Repository API
+
+Both MongoDB and PostgreSQL repositories expose the same interface:
+
+```typescript
+interface Repository<T> {
   create(data: Partial<T>): Promise<T>;
   findById(id: string | number): Promise<T | null>;
   findAll(filter?: Filter): Promise<T[]>;
-  findPage(options?: {
-    filter?: Filter;
-    page?: number;
-    limit?: number;
-    sort?: string | Record<string, 1 | -1 | 'asc' | 'desc'>;
-  }): Promise<{
-    data: T[];
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-  }>;
+  findPage(options?: PageOptions): Promise<PageResult<T>>;
   updateById(id: string | number, update: Partial<T>): Promise<T | null>;
   deleteById(id: string | number): Promise<boolean>;
   count(filter?: Filter): Promise<number>;
@@ -148,349 +200,247 @@ interface Repository<T = any, Filter = Record<string, any>> {
 }
 ```
 
-### Example calls
+### Pagination
 
-```ts
-// Create
-const user = await usersRepo.create({ name: 'Yasser' });
-
-// Find by id
-const found = await usersRepo.findById(user._id);
-
-// List all
-const allUsers = await usersRepo.findAll({});
-
-// Paginated list
-const page1 = await usersRepo.findPage({
-  filter: { status: 'active' },
+```typescript
+const result = await repo.findPage({
+  filter: { status: "active" },
   page: 1,
   limit: 20,
-  sort: '-createdAt', // or { createdAt: -1 }
+  sort: "-createdAt", // or { createdAt: -1 }
 });
 
-// Update
-const updated = await usersRepo.updateById(user._id, { name: 'Updated Name' });
+// Result:
+// {
+//   data: [...],
+//   page: 1,
+//   limit: 20,
+//   total: 150,
+//   pages: 8
+// }
+```
 
-// Delete
-const deletedOk = await usersRepo.deleteById(user._id);
+### MongoDB Repository
 
-// Count
-const totalActive = await usersRepo.count({ status: 'active' });
+```typescript
+import { Model } from "mongoose";
 
-// Exists
-const exists = await usersRepo.exists({ email: 'example@site.com' });
+// Create your Mongoose model as usual
+const usersRepo = db.createMongoRepository<User>({ model: UserModel });
+```
+
+### PostgreSQL Repository
+
+```typescript
+interface Order {
+  id: string;
+  user_id: string;
+  total: number;
+  created_at: Date;
+}
+
+const ordersRepo = db.createPostgresRepository<Order>({
+  table: "orders",
+  primaryKey: "id",
+  columns: ["id", "user_id", "total", "created_at", "is_deleted"],
+  defaultFilter: { is_deleted: false }, // Soft delete support
+});
+```
+
+### PostgreSQL Advanced Filters
+
+```typescript
+// Comparison operators
+await repo.findAll({
+  price: { gt: 100, lte: 500 },
+  status: { ne: "cancelled" },
+});
+
+// IN / NOT IN
+await repo.findAll({
+  category: { in: ["electronics", "books"] },
+});
+
+// LIKE (case-insensitive)
+await repo.findAll({
+  name: { like: "%widget%" },
+});
+
+// NULL checks
+await repo.findAll({
+  deleted_at: { isNull: true },
+});
 ```
 
 ---
 
-## 🌐 Mounting Endpoints (Express Example)
+## 🛡️ Error Handling
 
-The library is **only** about DB access. You’re free to expose any HTTP API you want.
-Here’s a simple pattern to wire the package into an Express CRUD router.
+### Global Exception Filter
 
-### 1. Build a generic CRUD router
+Register the filter globally to catch and format database errors:
 
-```ts
-// src/routes/crudFactory.ts
-import express from 'express';
-import { Repository } from '@ciscodeapps-template/database';
+```typescript
+// main.ts
+import { DatabaseExceptionFilter } from "@ciscode/database-kit";
 
-export function buildCrudRouter<T>(repo: Repository<T>) {
-  const router = express.Router();
-
-  // CREATE
-  router.post('/', async (req, res, next) => {
-    try {
-      const created = await repo.create(req.body);
-      res.status(201).json(created);
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  // LIST (with simple pagination)
-  router.get('/', async (req, res, next) => {
-    try {
-      const page = Number(req.query.page ?? 1);
-      const limit = Number(req.query.limit ?? 10);
-      const sort = req.query.sort as string | undefined;
-
-      // Everything else in query is treated as filter
-      const { page: _p, limit: _l, sort: _s, ...rawFilter } = req.query;
-      const filter = rawFilter as Record<string, any>;
-
-      const result = await repo.findPage({ filter, page, limit, sort });
-      res.json(result);
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  // GET BY ID
-  router.get('/:id', async (req, res, next) => {
-    try {
-      const doc = await repo.findById(req.params.id);
-      if (!doc) return res.status(404).json({ message: 'Not found' });
-      res.json(doc);
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  // UPDATE BY ID
-  router.put('/:id', async (req, res, next) => {
-    try {
-      const updated = await repo.updateById(req.params.id, req.body);
-      if (!updated) return res.status(404).json({ message: 'Not found' });
-      res.json(updated);
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  // DELETE BY ID
-  router.delete('/:id', async (req, res, next) => {
-    try {
-      const ok = await repo.deleteById(req.params.id);
-      if (!ok) return res.status(404).json({ message: 'Not found' });
-      res.json({ ok: true });
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  return router;
-}
+app.useGlobalFilters(new DatabaseExceptionFilter());
 ```
 
-### 2. Wire it in your Express app (Mongo example)
+Or in a module:
 
-```ts
-// src/server.ts
-import express from 'express';
-import { Database } from '@ciscodeapps-template/database';
-import UserModel from './models/user.model';
-import { buildCrudRouter } from './routes/crudFactory';
-
-async function bootstrap() {
-  const app = express();
-  app.use(express.json());
-
-  // 1) Create & connect the Mongo Database instance
-  const db = new Database({
-    type: 'mongo',
-    connectionString: process.env.MONGO_URI as string,
-  });
-  await db.connect();
-
-  // 2) Create a repository for "users"
-  const usersRepo = db.createMongoRepository<{ _id: string; name: string }>({
-    model: UserModel,
-  });
-
-  // 3) Mount CRUD endpoints under /api/users
-  app.use('/api/users', buildCrudRouter(usersRepo));
-
-  app.get('/health', (_, res) => res.json({ ok: true }));
-
-  app.use((err: any, _req, res, _next) => {
-    console.error(err);
-    res.status(500).json({ message: 'Internal server error' });
-  });
-
-  const port = process.env.PORT || 3000;
-  app.listen(port, () => console.log(`API listening on port ${port}`));
-}
-
-bootstrap().catch((err) => {
-  console.error('Fatal error during startup:', err);
-  process.exit(1);
-});
-```
-
-### 3. Calling the endpoints
-
-Once running, you can hit:
-
-* `GET /api/users` – list (paginated)
-
-  * Supports `?page=1&limit=10&status=active&sort=-createdAt`
-* `GET /api/users/:id` – get by id
-* `POST /api/users` – create
-  Body: `{ "name": "Yasser" }`
-* `PUT /api/users/:id` – update
-  Body: `{ "name": "New Name" }`
-* `DELETE /api/users/:id` – delete
-
-Exactly the same pattern works for **Postgres**, just build the repo with `createPostgresRepository` instead.
-
----
-
-## 🧩 Using with NestJS
-
-The library also ships with a **NestJS module wrapper** for dependency injection.
-
-### 1. Register the Database in `AppModule`
-
-```ts
-// app.module.ts
-import { Module } from '@nestjs/common';
-import {
-  DatabaseModule,
-} from '@ciscodeapps-template/database';
-import { UserModule } from './user/user.module';
+```typescript
+import { APP_FILTER } from "@nestjs/core";
+import { DatabaseExceptionFilter } from "@ciscode/database-kit";
 
 @Module({
-  imports: [
-    DatabaseModule.forRoot({
-      type: 'mongo',
-      connectionString: process.env.MONGO_URI as string,
-    }),
-    UserModule,
-  ],
+  providers: [{ provide: APP_FILTER, useClass: DatabaseExceptionFilter }],
 })
 export class AppModule {}
 ```
 
-### 2. Inject Database and create a repo in a service
+### Error Response Format
 
-```ts
-// user.service.ts
-import { Injectable } from '@nestjs/common';
+```json
+{
+  "statusCode": 409,
+  "message": "A record with this value already exists",
+  "error": "DuplicateKeyError",
+  "timestamp": "2026-01-31T12:00:00.000Z",
+  "path": "/api/users"
+}
+```
+
+---
+
+## 🔧 Utilities
+
+### Pagination Utilities
+
+```typescript
 import {
-  InjectDatabase,
-  Database,
-  Repository,
-} from '@ciscodeapps-template/database';
-import UserModel from '../models/user.model';
+  normalizePaginationOptions,
+  parseSortString,
+  calculateOffset,
+} from "@ciscode/database-kit";
 
-interface User {
-  _id: string;
-  name: string;
-}
-
-@Injectable()
-export class UserService {
-  private readonly repo: Repository<User>;
-
-  constructor(@InjectDatabase() private readonly db: Database) {
-    this.repo = this.db.createMongoRepository<User>({ model: UserModel });
-  }
-
-  findAll(page = 1, limit = 20) {
-    return this.repo.findPage({ page, limit, sort: '-createdAt' });
-  }
-
-  create(dto: Partial<User>) {
-    return this.repo.create(dto);
-  }
-
-  findOne(id: string) {
-    return this.repo.findById(id);
-  }
-
-  update(id: string, dto: Partial<User>) {
-    return this.repo.updateById(id, dto);
-  }
-
-  remove(id: string) {
-    return this.repo.deleteById(id);
-  }
-}
+const normalized = normalizePaginationOptions({ page: 1 });
+const sortObj = parseSortString("-createdAt,name");
+const offset = calculateOffset(2, 10); // 10
 ```
 
-### 3. Simple NestJS controller example
+### Validation Utilities
 
-```ts
-// user.controller.ts
-import { Controller, Get, Post, Body, Param, Query, Put, Delete } from '@nestjs/common';
-import { UserService } from './user.service';
+```typescript
+import {
+  isValidMongoId,
+  isValidUuid,
+  sanitizeFilter,
+  pickFields,
+} from "@ciscode/database-kit";
 
-@Controller('users')
-export class UserController {
-  constructor(private readonly service: UserService) {}
+isValidMongoId("507f1f77bcf86cd799439011"); // true
+isValidUuid("550e8400-e29b-41d4-a716-446655440000"); // true
 
-  @Get()
-  findAll(@Query('page') page = 1, @Query('limit') limit = 20) {
-    return this.service.findAll(Number(page), Number(limit));
-  }
+const clean = sanitizeFilter({ name: "John", age: undefined });
+// { name: 'John' }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
-  }
-
-  @Post()
-  create(@Body() dto: any) {
-    return this.service.create(dto);
-  }
-
-  @Put(':id')
-  update(@Param('id') id: string, @Body() dto: any) {
-    return this.service.update(id, dto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.service.remove(id);
-  }
-}
-```
-
-The controller’s HTTP interface is the same whether your `DatabaseModule.forRoot` uses:
-
-```ts
-type: 'mongo'
-```
-
-or:
-
-```ts
-type: 'postgres'
-```
-
-You only change **how the repository is created** in the service.
-
----
-
-## 🧬 Multiple Databases in One Project
-
-You can also talk to **both Mongo and Postgres** in a single app:
-
-* Create **two** `Database` instances (one mongo, one postgres) in a plain Node app, or
-* In Nest, register multiple `DatabaseModule` instances under different tokens (this is an advanced usage and can be added later).
-
-A simple approach in plain Node:
-
-```ts
-const mongoDb = new Database({ type: 'mongo', connectionString: MONGO_URI });
-const pgDb = new Database({ type: 'postgres', connectionString: PG_URI });
-
-await Promise.all([mongoDb.connect(), pgDb.connect()]);
-
-const usersRepo = mongoDb.createMongoRepository({ model: UserModel });
-const ordersRepo = pgDb.createPostgresRepository({
-  table: 'orders',
-  primaryKey: 'id',
-  columns: ['id', 'user_id', 'total', 'created_at'],
-});
+const picked = pickFields(data, ["name", "email"]);
 ```
 
 ---
 
-## ✅ Summary
+## 🧪 Testing
 
-* **Install** `@ciscodeapps-template/database`.
-* **Create** a `Database` instance with `{ type, connectionString }`.
-* **Call** `await db.connect()`.
-* **Create** repositories:
+```bash
+# Run tests
+npm test
 
-  * `createMongoRepository({ model })` for Mongo
-  * `createPostgresRepository({ table, columns, primaryKey, defaultFilter })` for Postgres
-* **Use repositories** inside your routes/services to implement endpoints.
-* Optional: use `DatabaseModule.forRoot` + `@InjectDatabase()` in NestJS for DI.
+# Run with coverage
+npm run test:cov
+```
 
-This keeps all your CRUD & pagination logic **centralized** and **consistent**, while letting each project define its own models and tables.
+### Mocking in Tests
+
+```typescript
+const mockDb = {
+  createMongoRepository: jest.fn().mockReturnValue({
+    create: jest.fn(),
+    findById: jest.fn(),
+    // ...
+  }),
+};
+
+const module = await Test.createTestingModule({
+  providers: [UsersService, { provide: DATABASE_TOKEN, useValue: mockDb }],
+}).compile();
+```
+
+---
+
+## 📁 Project Structure
 
 ```
+src/
+├── index.ts                       # Public API exports
+├── database-kit.module.ts         # NestJS module
+├── adapters/                      # Database adapters
+│   ├── mongo.adapter.ts
+│   └── postgres.adapter.ts
+├── config/                        # Configuration
+│   ├── database.config.ts
+│   └── database.constants.ts
+├── contracts/                     # TypeScript contracts
+│   └── database.contracts.ts
+├── filters/                       # Exception filters
+│   └── database-exception.filter.ts
+├── middleware/                    # Decorators
+│   └── database.decorators.ts
+├── services/                      # Business logic
+│   ├── database.service.ts
+│   └── logger.service.ts
+└── utils/                         # Utilities
+    ├── pagination.utils.ts
+    └── validation.utils.ts
 ```
+
+---
+
+## 🔒 Security
+
+See [SECURITY.md](SECURITY.md) for:
+
+- Vulnerability reporting
+- Security best practices
+- Security checklist
+
+---
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+
+- Development setup
+- Git workflow
+- Code standards
+- PR process
+
+---
+
+## 📝 Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
+
+---
+
+## 📄 License
+
+MIT © [C International Service](https://ciscode.com)
+
+---
+
+## 🙋 Support
+
+- 📧 Email: info@ciscode.com
+- 🐛 Issues: [GitHub Issues](https://github.com/CISCODE-MA/DatabaseKit/issues)
+- 📖 Docs: [GitHub Wiki](https://github.com/CISCODE-MA/DatabaseKit/wiki)

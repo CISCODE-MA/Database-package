@@ -156,6 +156,15 @@ export class PostgresAdapter {
         const allowed = cfg.columns || [];
         const baseFilter = cfg.defaultFilter || {};
 
+        // Soft delete configuration
+        const softDeleteEnabled = cfg.softDelete ?? false;
+        const softDeleteField = cfg.softDeleteField ?? 'deleted_at';
+
+        // Create not-deleted filter for soft delete
+        const notDeletedFilter: Record<string, unknown> = softDeleteEnabled
+            ? { [softDeleteField]: { isNull: true } }
+            : {};
+
         const assertFieldAllowed = (field: string): void => {
             if (allowed.length && !allowed.includes(field)) {
                 throw new Error(
@@ -232,15 +241,17 @@ export class PostgresAdapter {
             },
 
             async findById(id: string | number): Promise<T | null> {
-                const row = await kx(table)
+                const mergedFilter = { ...baseFilter, ...notDeletedFilter };
+                const qb = kx(table)
                     .select('*')
-                    .where({ [pk]: id, ...baseFilter })
-                    .first();
+                    .where({ [pk]: id });
+                applyFilter(qb, mergedFilter);
+                const row = await qb.first();
                 return (row as T) || null;
             },
 
             async findAll(filter: Record<string, unknown> = {}): Promise<T[]> {
-                const mergedFilter = { ...baseFilter, ...filter };
+                const mergedFilter = { ...baseFilter, ...notDeletedFilter, ...filter };
                 const qb = kx(table).select('*');
                 applyFilter(qb, mergedFilter);
                 const rows = await qb;
@@ -249,7 +260,7 @@ export class PostgresAdapter {
 
             async findPage(options: PageOptions = {}): Promise<PageResult<T>> {
                 const { filter = {}, page = 1, limit = 10, sort } = options;
-                const mergedFilter = { ...baseFilter, ...filter };
+                const mergedFilter = { ...baseFilter, ...notDeletedFilter, ...filter };
 
                 const offset = Math.max(0, (page - 1) * limit);
 
@@ -268,23 +279,33 @@ export class PostgresAdapter {
             },
 
             async updateById(id: string | number, update: Partial<T>): Promise<T | null> {
-                const [row] = await kx(table)
-                    .where({ [pk]: id })
-                    .update(update)
-                    .returning('*');
+                const mergedFilter = { ...baseFilter, ...notDeletedFilter };
+                const qb = kx(table)
+                    .where({ [pk]: id });
+                applyFilter(qb, mergedFilter);
+                const [row] = await qb.update(update).returning('*');
                 return (row as T) || null;
             },
 
             async deleteById(id: string | number): Promise<boolean> {
-                const [row] = await kx(table)
-                    .where({ [pk]: id })
-                    .delete()
-                    .returning('*');
-                return !!row;
+                const mergedFilter = { ...baseFilter, ...notDeletedFilter };
+
+                // If soft delete is enabled, update instead of delete
+                if (softDeleteEnabled) {
+                    const qb = kx(table).where({ [pk]: id });
+                    applyFilter(qb, mergedFilter);
+                    const affectedRows = await qb.update({ [softDeleteField]: new Date() });
+                    return affectedRows > 0;
+                }
+
+                const qb = kx(table).where({ [pk]: id });
+                applyFilter(qb, mergedFilter);
+                const affectedRows = await qb.delete();
+                return affectedRows > 0;
             },
 
             async count(filter: Record<string, unknown> = {}): Promise<number> {
-                const mergedFilter = { ...baseFilter, ...filter };
+                const mergedFilter = { ...baseFilter, ...notDeletedFilter, ...filter };
                 const [{ count }] = await kx(table)
                     .count<{ count: string }[]>({ count: '*' })
                     .modify((q) => applyFilter(q, mergedFilter));
@@ -292,7 +313,7 @@ export class PostgresAdapter {
             },
 
             async exists(filter: Record<string, unknown> = {}): Promise<boolean> {
-                const mergedFilter = { ...baseFilter, ...filter };
+                const mergedFilter = { ...baseFilter, ...notDeletedFilter, ...filter };
                 const row = await kx(table)
                     .select([pk])
                     .modify((q) => applyFilter(q, mergedFilter))
@@ -315,7 +336,7 @@ export class PostgresAdapter {
             },
 
             async updateMany(filter: Record<string, unknown>, update: Partial<T>): Promise<number> {
-                const mergedFilter = { ...baseFilter, ...filter };
+                const mergedFilter = { ...baseFilter, ...notDeletedFilter, ...filter };
 
                 const affectedRows = await kx(table)
                     .modify((q) => applyFilter(q, mergedFilter))
@@ -325,7 +346,15 @@ export class PostgresAdapter {
             },
 
             async deleteMany(filter: Record<string, unknown>): Promise<number> {
-                const mergedFilter = { ...baseFilter, ...filter };
+                const mergedFilter = { ...baseFilter, ...notDeletedFilter, ...filter };
+
+                // If soft delete is enabled, update instead of delete
+                if (softDeleteEnabled) {
+                    const affectedRows = await kx(table)
+                        .modify((q) => applyFilter(q, mergedFilter))
+                        .update({ [softDeleteField]: new Date() });
+                    return affectedRows;
+                }
 
                 const affectedRows = await kx(table)
                     .modify((q) => applyFilter(q, mergedFilter))
@@ -333,6 +362,75 @@ export class PostgresAdapter {
 
                 return affectedRows;
             },
+
+            // -----------------------------
+            // Soft Delete Operations
+            // -----------------------------
+
+            softDelete: softDeleteEnabled
+                ? async (id: string | number): Promise<boolean> => {
+                    const mergedFilter = { ...baseFilter, ...notDeletedFilter };
+                    const qb = kx(table).where({ [pk]: id });
+                    applyFilter(qb, mergedFilter);
+                    const affectedRows = await qb.update({ [softDeleteField]: new Date() });
+                    return affectedRows > 0;
+                }
+                : undefined,
+
+            softDeleteMany: softDeleteEnabled
+                ? async (filter: Record<string, unknown>): Promise<number> => {
+                    const mergedFilter = { ...baseFilter, ...notDeletedFilter, ...filter };
+                    const affectedRows = await kx(table)
+                        .modify((q) => applyFilter(q, mergedFilter))
+                        .update({ [softDeleteField]: new Date() });
+                    return affectedRows;
+                }
+                : undefined,
+
+            restore: softDeleteEnabled
+                ? async (id: string | number): Promise<T | null> => {
+                    const deletedFilter = { [softDeleteField]: { isNotNull: true } };
+                    const mergedFilter = { ...baseFilter, ...deletedFilter };
+                    const qb = kx(table).where({ [pk]: id });
+                    applyFilter(qb, mergedFilter);
+                    const [row] = await qb.update({ [softDeleteField]: null }).returning('*');
+                    return (row as T) || null;
+                }
+                : undefined,
+
+            restoreMany: softDeleteEnabled
+                ? async (filter: Record<string, unknown>): Promise<number> => {
+                    const deletedFilter = { [softDeleteField]: { isNotNull: true } };
+                    const mergedFilter = { ...baseFilter, ...deletedFilter, ...filter };
+                    const affectedRows = await kx(table)
+                        .modify((q) => applyFilter(q, mergedFilter))
+                        .update({ [softDeleteField]: null });
+                    return affectedRows;
+                }
+                : undefined,
+
+            findAllWithDeleted: softDeleteEnabled
+                ? async (filter: Record<string, unknown> = {}): Promise<T[]> => {
+                    // Ignore soft delete filter, include all records
+                    const mergedFilter = { ...baseFilter, ...filter };
+                    const qb = kx(table).select('*');
+                    applyFilter(qb, mergedFilter);
+                    const rows = await qb;
+                    return rows as T[];
+                }
+                : undefined,
+
+            findDeleted: softDeleteEnabled
+                ? async (filter: Record<string, unknown> = {}): Promise<T[]> => {
+                    // Only find deleted records
+                    const deletedFilter = { [softDeleteField]: { isNotNull: true } };
+                    const mergedFilter = { ...baseFilter, ...deletedFilter, ...filter };
+                    const qb = kx(table).select('*');
+                    applyFilter(qb, mergedFilter);
+                    const rows = await qb;
+                    return rows as T[];
+                }
+                : undefined,
         };
 
         return repo;

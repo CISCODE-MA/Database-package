@@ -156,6 +156,14 @@ export class MongoAdapter {
     createRepository<T = unknown>(opts: MongoRepositoryOptions, session?: ClientSession): Repository<T> {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const model = opts.model as Model<any>;
+        const softDeleteEnabled = opts.softDelete ?? false;
+        const softDeleteField = opts.softDeleteField ?? 'deletedAt';
+
+        // Base filter to exclude soft-deleted records
+        const notDeletedFilter = softDeleteEnabled
+            ? { [softDeleteField]: { $eq: null } }
+            : {};
+
         const shapePage = (
             data: T[],
             page: number,
@@ -175,14 +183,16 @@ export class MongoAdapter {
             },
 
             async findById(id: string | number): Promise<T | null> {
-                let query = model.findById(id);
+                const mergedFilter = { _id: id, ...notDeletedFilter };
+                let query = model.findOne(mergedFilter);
                 if (session) query = query.session(session);
                 const doc = await query.lean().exec();
                 return doc as T | null;
             },
 
             async findAll(filter: Record<string, unknown> = {}): Promise<T[]> {
-                let query = model.find(filter);
+                const mergedFilter = { ...filter, ...notDeletedFilter };
+                let query = model.find(mergedFilter);
                 if (session) query = query.session(session);
                 const docs = await query.lean().exec();
                 return docs as T[];
@@ -190,9 +200,10 @@ export class MongoAdapter {
 
             async findPage(options: PageOptions = {}): Promise<PageResult<T>> {
                 const { filter = {}, page = 1, limit = 10, sort } = options;
+                const mergedFilter = { ...filter, ...notDeletedFilter };
 
                 const skip = Math.max(0, (page - 1) * limit);
-                let query = model.find(filter).skip(skip).limit(limit);
+                let query = model.find(mergedFilter).skip(skip).limit(limit);
 
                 if (sort) {
                     query = query.sort(sort as Record<string, 1 | -1>);
@@ -202,21 +213,34 @@ export class MongoAdapter {
                 const [data, total] = await Promise.all([
                     query.lean().exec(),
                     session
-                        ? model.countDocuments(filter).session(session).exec()
-                        : model.countDocuments(filter).exec(),
+                        ? model.countDocuments(mergedFilter).session(session).exec()
+                        : model.countDocuments(mergedFilter).exec(),
                 ]);
 
                 return shapePage(data as T[], page, limit, total);
             },
 
             async updateById(id: string | number, update: Partial<T>): Promise<T | null> {
-                let query = model.findByIdAndUpdate(id, update, { new: true });
+                const mergedFilter = { _id: id, ...notDeletedFilter };
+                let query = model.findOneAndUpdate(mergedFilter, update, { new: true });
                 if (session) query = query.session(session);
                 const doc = await query.lean().exec();
                 return doc as T | null;
             },
 
             async deleteById(id: string | number): Promise<boolean> {
+                // If soft delete is enabled, use softDelete instead
+                if (softDeleteEnabled) {
+                    const mergedFilter = { _id: id, ...notDeletedFilter };
+                    const options = session ? { session } : {};
+                    const result = await model.updateOne(
+                        mergedFilter,
+                        { [softDeleteField]: new Date() },
+                        options
+                    ).exec();
+                    return result.modifiedCount > 0;
+                }
+
                 let query = model.findByIdAndDelete(id);
                 if (session) query = query.session(session);
                 const res = await query.lean().exec();
@@ -224,18 +248,20 @@ export class MongoAdapter {
             },
 
             async count(filter: Record<string, unknown> = {}): Promise<number> {
-                let query = model.countDocuments(filter);
+                const mergedFilter = { ...filter, ...notDeletedFilter };
+                let query = model.countDocuments(mergedFilter);
                 if (session) query = query.session(session);
                 return query.exec();
             },
 
             async exists(filter: Record<string, unknown> = {}): Promise<boolean> {
+                const mergedFilter = { ...filter, ...notDeletedFilter };
                 // exists() doesn't support session directly, use findOne
                 if (session) {
-                    const doc = await model.findOne(filter).session(session).select('_id').lean().exec();
+                    const doc = await model.findOne(mergedFilter).session(session).select('_id').lean().exec();
                     return !!doc;
                 }
-                const res = await model.exists(filter);
+                const res = await model.exists(mergedFilter);
                 return !!res;
             },
 
@@ -256,16 +282,105 @@ export class MongoAdapter {
             },
 
             async updateMany(filter: Record<string, unknown>, update: Partial<T>): Promise<number> {
+                const mergedFilter = { ...filter, ...notDeletedFilter };
                 const options = session ? { session } : {};
-                const result = await model.updateMany(filter, update, options).exec();
+                const result = await model.updateMany(mergedFilter, update, options).exec();
                 return result.modifiedCount;
             },
 
             async deleteMany(filter: Record<string, unknown>): Promise<number> {
+                const mergedFilter = { ...filter, ...notDeletedFilter };
                 const options = session ? { session } : {};
-                const result = await model.deleteMany(filter, options).exec();
+
+                // If soft delete is enabled, update instead of delete
+                if (softDeleteEnabled) {
+                    const result = await model.updateMany(
+                        mergedFilter,
+                        { [softDeleteField]: new Date() },
+                        options
+                    ).exec();
+                    return result.modifiedCount;
+                }
+
+                const result = await model.deleteMany(mergedFilter, options).exec();
                 return result.deletedCount;
             },
+
+            // -----------------------------
+            // Soft Delete Operations
+            // -----------------------------
+
+            softDelete: softDeleteEnabled
+                ? async (id: string | number): Promise<boolean> => {
+                    const mergedFilter = { _id: id, ...notDeletedFilter };
+                    const options = session ? { session } : {};
+                    const result = await model.updateOne(
+                        mergedFilter,
+                        { [softDeleteField]: new Date() },
+                        options
+                    ).exec();
+                    return result.modifiedCount > 0;
+                }
+                : undefined,
+
+            softDeleteMany: softDeleteEnabled
+                ? async (filter: Record<string, unknown>): Promise<number> => {
+                    const mergedFilter = { ...filter, ...notDeletedFilter };
+                    const options = session ? { session } : {};
+                    const result = await model.updateMany(
+                        mergedFilter,
+                        { [softDeleteField]: new Date() },
+                        options
+                    ).exec();
+                    return result.modifiedCount;
+                }
+                : undefined,
+
+            restore: softDeleteEnabled
+                ? async (id: string | number): Promise<T | null> => {
+                    const deletedFilter = { _id: id, [softDeleteField]: { $ne: null } };
+                    let query = model.findOneAndUpdate(
+                        deletedFilter,
+                        { $unset: { [softDeleteField]: 1 } },
+                        { new: true }
+                    );
+                    if (session) query = query.session(session);
+                    const doc = await query.lean().exec();
+                    return doc as T | null;
+                }
+                : undefined,
+
+            restoreMany: softDeleteEnabled
+                ? async (filter: Record<string, unknown>): Promise<number> => {
+                    const deletedFilter = { ...filter, [softDeleteField]: { $ne: null } };
+                    const options = session ? { session } : {};
+                    const result = await model.updateMany(
+                        deletedFilter,
+                        { $unset: { [softDeleteField]: 1 } },
+                        options
+                    ).exec();
+                    return result.modifiedCount;
+                }
+                : undefined,
+
+            findAllWithDeleted: softDeleteEnabled
+                ? async (filter: Record<string, unknown> = {}): Promise<T[]> => {
+                    let query = model.find(filter);
+                    if (session) query = query.session(session);
+                    const docs = await query.lean().exec();
+                    return docs as T[];
+                }
+                : undefined,
+
+            findDeleted: softDeleteEnabled
+                ? async (filter: Record<string, unknown> = {}): Promise<T[]> => {
+                    const deletedFilter = { ...filter, [softDeleteField]: { $ne: null } };
+                    let query = model.find(deletedFilter);
+                    if (session) query = query.session(session);
+                    const docs = await query.lean().exec();
+                    return docs as T[];
+                }
+                : undefined,
         };
 
         return repo;

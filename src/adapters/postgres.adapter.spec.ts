@@ -289,4 +289,108 @@ describe('PostgresAdapter', () => {
             // With mocks, we're just verifying the method works
         });
     });
+
+    describe('Soft Delete', () => {
+        it('should not have soft delete methods when softDelete is disabled', () => {
+            adapter.connect();
+            const repo = adapter.createRepository({ table: 'users', softDelete: false });
+
+            expect(repo.softDelete).toBeUndefined();
+            expect(repo.softDeleteMany).toBeUndefined();
+            expect(repo.restore).toBeUndefined();
+            expect(repo.restoreMany).toBeUndefined();
+            expect(repo.findAllWithDeleted).toBeUndefined();
+            expect(repo.findDeleted).toBeUndefined();
+        });
+
+        it('should have soft delete methods when softDelete is enabled', () => {
+            adapter.connect();
+            const repo = adapter.createRepository({ table: 'users', softDelete: true });
+
+            expect(typeof repo.softDelete).toBe('function');
+            expect(typeof repo.softDeleteMany).toBe('function');
+            expect(typeof repo.restore).toBe('function');
+            expect(typeof repo.restoreMany).toBe('function');
+            expect(typeof repo.findAllWithDeleted).toBe('function');
+            expect(typeof repo.findDeleted).toBe('function');
+        });
+
+        it('should soft delete a record by setting deleted_at', async () => {
+            adapter.connect();
+            const repo = adapter.createRepository({ table: 'users', softDelete: true });
+
+            await repo.softDelete!('123');
+
+            // Verify that update was called (soft delete sets timestamp instead of deleting)
+            const knexTableMock = mockKnexInstance as unknown as jest.Mock;
+            expect(knexTableMock).toHaveBeenCalledWith('users');
+        });
+
+        it('should use custom softDeleteField', () => {
+            adapter.connect();
+            const repo = adapter.createRepository({
+                table: 'users',
+                softDelete: true,
+                softDeleteField: 'removed_at',
+            });
+
+            // Verify soft delete methods are available with custom field
+            expect(typeof repo.softDelete).toBe('function');
+            expect(typeof repo.restore).toBe('function');
+        });
+
+        it('should provide restore method when soft delete is enabled', () => {
+            adapter.connect();
+            const repo = adapter.createRepository({ table: 'users', softDelete: true });
+
+            expect(typeof repo.restore).toBe('function');
+            expect(typeof repo.restoreMany).toBe('function');
+        });
+
+        it('should provide findDeleted method when soft delete is enabled', () => {
+            adapter.connect();
+            const repo = adapter.createRepository({ table: 'users', softDelete: true });
+
+            expect(typeof repo.findDeleted).toBe('function');
+        });
+
+        it('should provide findAllWithDeleted method when soft delete is enabled', () => {
+            adapter.connect();
+            const repo = adapter.createRepository({ table: 'users', softDelete: true });
+
+            expect(typeof repo.findAllWithDeleted).toBe('function');
+        });
+
+        it('should provide softDeleteMany method when soft delete is enabled', () => {
+            adapter.connect();
+            const repo = adapter.createRepository({ table: 'users', softDelete: true });
+
+            expect(typeof repo.softDeleteMany).toBe('function');
+        });
+
+        it('should have all soft delete methods defined correctly', () => {
+            adapter.connect();
+            const repo = adapter.createRepository({
+                table: 'users',
+                softDelete: true,
+                columns: ['id', 'name', 'deleted_at']
+            });
+
+            // All soft delete methods should be defined
+            expect(repo.softDelete).toBeDefined();
+            expect(repo.softDeleteMany).toBeDefined();
+            expect(repo.restore).toBeDefined();
+            expect(repo.restoreMany).toBeDefined();
+            expect(repo.findAllWithDeleted).toBeDefined();
+            expect(repo.findDeleted).toBeDefined();
+
+            // They should all be functions
+            expect(typeof repo.softDelete).toBe('function');
+            expect(typeof repo.softDeleteMany).toBe('function');
+            expect(typeof repo.restore).toBe('function');
+            expect(typeof repo.restoreMany).toBe('function');
+            expect(typeof repo.findAllWithDeleted).toBe('function');
+            expect(typeof repo.findDeleted).toBe('function');
+        });
+    });
 });

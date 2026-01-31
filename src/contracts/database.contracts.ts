@@ -197,6 +197,58 @@ export interface Repository<T = unknown, Filter = Record<string, unknown>> {
      * @returns Number of entities deleted
      */
     deleteMany(filter: Filter): Promise<number>;
+
+    // -----------------------------
+    // Soft Delete Operations
+    // -----------------------------
+
+    /**
+     * Soft deletes an entity by setting deletedAt timestamp.
+     * Only available when softDelete option is enabled.
+     * @param id - The entity ID
+     * @returns True if soft deleted, false if not found
+     */
+    softDelete?(id: string | number): Promise<boolean>;
+
+    /**
+     * Soft deletes multiple entities matching the filter.
+     * Only available when softDelete option is enabled.
+     * @param filter - Filter criteria to match entities
+     * @returns Number of entities soft deleted
+     */
+    softDeleteMany?(filter: Filter): Promise<number>;
+
+    /**
+     * Restores a soft-deleted entity by clearing deletedAt.
+     * Only available when softDelete option is enabled.
+     * @param id - The entity ID
+     * @returns The restored entity or null if not found
+     */
+    restore?(id: string | number): Promise<T | null>;
+
+    /**
+     * Restores multiple soft-deleted entities matching the filter.
+     * Only available when softDelete option is enabled.
+     * @param filter - Filter criteria to match entities
+     * @returns Number of entities restored
+     */
+    restoreMany?(filter: Filter): Promise<number>;
+
+    /**
+     * Finds all entities including soft-deleted ones.
+     * Only available when softDelete option is enabled.
+     * @param filter - Optional filter criteria
+     * @returns Array of all matching entities (including deleted)
+     */
+    findAllWithDeleted?(filter?: Filter): Promise<T[]>;
+
+    /**
+     * Finds only soft-deleted entities.
+     * Only available when softDelete option is enabled.
+     * @param filter - Optional filter criteria
+     * @returns Array of soft-deleted entities
+     */
+    findDeleted?(filter?: Filter): Promise<T[]>;
 }
 
 // -----------------------------
@@ -209,6 +261,15 @@ export interface Repository<T = unknown, Filter = Record<string, unknown>> {
 export interface MongoRepositoryOptions {
     /** Mongoose Model instance */
     model: unknown; // Using unknown to avoid Mongoose type dependency
+    /**
+     * Enable soft delete pattern.
+     * When enabled, deleteById/deleteMany will set deletedAt instead of removing.
+     */
+    softDelete?: boolean;
+    /**
+     * Field name for soft delete timestamp (default: 'deletedAt').
+     */
+    softDeleteField?: string;
 }
 
 /**
@@ -229,6 +290,15 @@ export interface PostgresEntityConfig {
      * Useful for soft-delete patterns (e.g., { is_deleted: false }).
      */
     defaultFilter?: Record<string, unknown>;
+    /**
+     * Enable soft delete pattern.
+     * When enabled, deleteById/deleteMany will set deletedAt instead of removing.
+     */
+    softDelete?: boolean;
+    /**
+     * Field name for soft delete timestamp (default: 'deleted_at').
+     */
+    softDeleteField?: string;
 }
 
 // -----------------------------

@@ -283,4 +283,168 @@ describe('MongoAdapter', () => {
             expect(result.responseTimeMs).toBeGreaterThanOrEqual(0);
         });
     });
+
+    describe('Soft Delete', () => {
+        it('should not have soft delete methods when softDelete is disabled', () => {
+            const mockModel = {
+                find: jest.fn().mockReturnThis(),
+                lean: jest.fn().mockReturnThis(),
+                exec: jest.fn(),
+            };
+
+            const repo = adapter.createRepository({ model: mockModel, softDelete: false });
+
+            expect(repo.softDelete).toBeUndefined();
+            expect(repo.softDeleteMany).toBeUndefined();
+            expect(repo.restore).toBeUndefined();
+            expect(repo.restoreMany).toBeUndefined();
+            expect(repo.findAllWithDeleted).toBeUndefined();
+            expect(repo.findDeleted).toBeUndefined();
+        });
+
+        it('should have soft delete methods when softDelete is enabled', () => {
+            const mockModel = {
+                find: jest.fn().mockReturnThis(),
+                findById: jest.fn().mockReturnThis(),
+                updateOne: jest.fn().mockReturnThis(),
+                updateMany: jest.fn().mockReturnThis(),
+                findOneAndUpdate: jest.fn().mockReturnThis(),
+                lean: jest.fn().mockReturnThis(),
+                exec: jest.fn(),
+            };
+
+            const repo = adapter.createRepository({ model: mockModel, softDelete: true });
+
+            expect(typeof repo.softDelete).toBe('function');
+            expect(typeof repo.softDeleteMany).toBe('function');
+            expect(typeof repo.restore).toBe('function');
+            expect(typeof repo.restoreMany).toBe('function');
+            expect(typeof repo.findAllWithDeleted).toBe('function');
+            expect(typeof repo.findDeleted).toBe('function');
+        });
+
+        it('should soft delete a record by setting deletedAt', async () => {
+            const mockModel = {
+                find: jest.fn().mockReturnThis(),
+                updateOne: jest.fn().mockReturnValue({
+                    exec: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
+                }),
+                lean: jest.fn().mockReturnThis(),
+                exec: jest.fn(),
+            };
+
+            const repo = adapter.createRepository({ model: mockModel, softDelete: true });
+            const result = await repo.softDelete!('123');
+
+            expect(result).toBe(true);
+            expect(mockModel.updateOne).toHaveBeenCalledWith(
+                { _id: '123', deletedAt: { $eq: null } },
+                expect.objectContaining({ deletedAt: expect.any(Date) }),
+                {},
+            );
+        });
+
+        it('should use custom softDeleteField', async () => {
+            const mockModel = {
+                find: jest.fn().mockReturnThis(),
+                updateOne: jest.fn().mockReturnValue({
+                    exec: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
+                }),
+                lean: jest.fn().mockReturnThis(),
+                exec: jest.fn(),
+            };
+
+            const repo = adapter.createRepository({
+                model: mockModel,
+                softDelete: true,
+                softDeleteField: 'removedAt',
+            });
+            await repo.softDelete!('123');
+
+            expect(mockModel.updateOne).toHaveBeenCalledWith(
+                { _id: '123', removedAt: { $eq: null } },
+                expect.objectContaining({ removedAt: expect.any(Date) }),
+                {},
+            );
+        });
+
+        it('should restore a soft-deleted record', async () => {
+            const mockModel = {
+                find: jest.fn().mockReturnThis(),
+                findOneAndUpdate: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockReturnValue({
+                        exec: jest.fn().mockResolvedValue({ _id: '123', name: 'Test' }),
+                    }),
+                }),
+                lean: jest.fn().mockReturnThis(),
+                exec: jest.fn(),
+            };
+
+            const repo = adapter.createRepository({ model: mockModel, softDelete: true });
+            const result = await repo.restore!('123');
+
+            expect(result).toEqual({ _id: '123', name: 'Test' });
+            expect(mockModel.findOneAndUpdate).toHaveBeenCalledWith(
+                { _id: '123', deletedAt: { $ne: null } },
+                { $unset: { deletedAt: 1 } },
+                { new: true },
+            );
+        });
+
+        it('should find only deleted records', async () => {
+            const mockDocs = [{ _id: '1', deletedAt: new Date() }];
+            const mockModel = {
+                find: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockReturnValue({
+                        exec: jest.fn().mockResolvedValue(mockDocs),
+                    }),
+                }),
+            };
+
+            const repo = adapter.createRepository({ model: mockModel, softDelete: true });
+            const result = await repo.findDeleted!({});
+
+            expect(result).toEqual(mockDocs);
+            expect(mockModel.find).toHaveBeenCalledWith({ deletedAt: { $ne: null } });
+        });
+
+        it('should deleteMany as soft delete when enabled', async () => {
+            const mockModel = {
+                find: jest.fn().mockReturnThis(),
+                updateMany: jest.fn().mockReturnValue({
+                    exec: jest.fn().mockResolvedValue({ modifiedCount: 5 }),
+                }),
+                lean: jest.fn().mockReturnThis(),
+                exec: jest.fn(),
+            };
+
+            const repo = adapter.createRepository({ model: mockModel, softDelete: true });
+            const result = await repo.deleteMany({ status: 'old' });
+
+            expect(result).toBe(5);
+            expect(mockModel.updateMany).toHaveBeenCalledWith(
+                expect.objectContaining({ status: 'old', deletedAt: { $eq: null } }),
+                expect.objectContaining({ deletedAt: expect.any(Date) }),
+                {},
+            );
+        });
+
+        it('should filter out soft-deleted records in findAll', async () => {
+            const mockDocs = [{ _id: '1', name: 'Active' }];
+            const mockModel = {
+                find: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockReturnValue({
+                        exec: jest.fn().mockResolvedValue(mockDocs),
+                    }),
+                }),
+            };
+
+            const repo = adapter.createRepository({ model: mockModel, softDelete: true });
+            await repo.findAll({});
+
+            expect(mockModel.find).toHaveBeenCalledWith(
+                expect.objectContaining({ deletedAt: { $eq: null } }),
+            );
+        });
+    });
 });

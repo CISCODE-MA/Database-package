@@ -774,12 +774,12 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## 📄 License
 
-MIT © [C International Service](https://ciscode.com)
+MIT © [C International Service](https://ciscode.co.uk)
 
 ---
 
 ## 🙋 Support
 
-- 📧 Email: info@ciscode.com
+- 📧 Email: info@ciscod.com
 - 🐛 Issues: [GitHub Issues](https://github.com/CISCODE-MA/DatabaseKit/issues)
 - 📖 Docs: [GitHub Wiki](https://github.com/CISCODE-MA/DatabaseKit/wiki)

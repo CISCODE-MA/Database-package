@@ -25,7 +25,7 @@ If you discover a security vulnerability, **please do NOT file a public issue**.
 
 Instead, report it privately to our security team:
 
-📧 **security@ciscode.com**
+📧 **info@ciscod.com**
 
 Or use GitHub's private vulnerability reporting:
 
@@ -232,7 +232,7 @@ We appreciate security researchers who help keep DatabaseKit secure:
 
 ## 📞 Security Contact
 
-**Email:** security@ciscode.com
+**Email:** info@ciscod.com
 
 **PGP Key:** Available upon request for encrypted communications.
 

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
 ## [Unreleased]
 
 ### Planned
@@ -14,16 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MySQL adapter support
 - Redis caching layer
 - Query builder interface
-- Soft delete built-in support
+- Aggregation pipeline support
 - Audit logging
 
 ---
 
-## [1.0.0] - 2026-01-31
+## [1.0.0] - 2026-02-01
 
-### 🎉 Initial Release
+### 🎉 Production-Ready Release
 
-Complete refactoring following CISCODE AuthKit patterns and best practices.
+Complete refactoring following CISCODE AuthKit patterns and best practices, with advanced features for production use.
 
 ### Added
 
@@ -32,12 +37,53 @@ Complete refactoring following CISCODE AuthKit patterns and best practices.
 - **Unified Repository API** - Same interface for MongoDB and PostgreSQL
   - `create(data)` - Create new records
   - `findById(id)` - Find by primary key
+  - `findOne(filter)` - Find single record by filter _(NEW)_
   - `findAll(filter)` - Find all matching records
   - `findPage(options)` - Paginated queries
   - `updateById(id, data)` - Update by primary key
   - `deleteById(id)` - Delete by primary key
   - `count(filter)` - Count matching records
   - `exists(filter)` - Check if records exist
+  - `upsert(filter, data)` - Update or insert _(NEW)_
+  - `distinct(field, filter)` - Get distinct values _(NEW)_
+  - `select(filter, fields)` - Projection/field selection _(NEW)_
+
+- **Transaction Support** - ACID transactions with session management
+  - `withTransaction(callback, options)` - Execute callback in transaction
+  - Configurable retry logic for transient errors
+  - Automatic session handling
+
+- **Bulk Operations** - Efficient batch processing
+  - `insertMany(data)` - Bulk insert
+  - `updateMany(filter, update)` - Bulk update
+  - `deleteMany(filter)` - Bulk delete
+
+- **Soft Delete** - Non-destructive deletion
+  - `softDelete(id)` - Mark as deleted
+  - `restore(id)` - Restore deleted record
+  - `findWithDeleted(filter)` - Include deleted records
+  - Configurable field name (default: `deletedAt`/`deleted_at`)
+
+- **Timestamps** - Automatic created/updated tracking
+  - `createdAt`/`created_at` field on create
+  - `updatedAt`/`updated_at` field on update
+  - Configurable field names
+
+- **Health Checks** - Database monitoring
+  - `healthCheck()` - Connection status, response time, pool info
+
+- **Connection Pool Configuration** - Performance tuning _(NEW)_
+  - `PoolConfig` interface with min, max, idle timeout, acquire timeout
+  - MongoDB: maxPoolSize, minPoolSize, serverSelectionTimeoutMS, socketTimeoutMS
+  - PostgreSQL: min, max, idleTimeoutMillis, acquireTimeoutMillis
+
+- **Repository Hooks** - Lifecycle event callbacks _(NEW)_
+  - `beforeCreate(context)` - Called before insert, can modify data
+  - `afterCreate(entity)` - Called after insert
+  - `beforeUpdate(context)` - Called before update, can modify data
+  - `afterUpdate(entity)` - Called after update
+  - `beforeDelete(id)` - Called before delete
+  - `afterDelete(success)` - Called after delete
 
 #### NestJS Integration
 

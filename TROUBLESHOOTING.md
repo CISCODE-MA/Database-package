@@ -474,7 +474,7 @@ When creating an issue, include:
 
 - 🐛 **Bug Reports:** [GitHub Issues](https://github.com/CISCODE-MA/DatabaseKit/issues)
 - 💬 **Questions:** [GitHub Discussions](https://github.com/CISCODE-MA/DatabaseKit/discussions)
-- 📧 **Email:** info@ciscode.com
+- 📧 **Email:** info@ciscod.com
 
 ---
 

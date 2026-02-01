@@ -56,6 +56,9 @@ export {
     MongoDatabaseConfig,
     PostgresDatabaseConfig,
 
+    // Pool configuration
+    PoolConfig,
+
     // Module configuration
     DatabaseKitModuleOptions,
     DatabaseKitModuleAsyncOptions,
@@ -68,6 +71,21 @@ export {
     // Pagination types
     PageResult,
     PageOptions,
+
+    // Transaction types
+    TransactionIsolationLevel,
+    TransactionOptions,
+    TransactionContext,
+    MongoTransactionContext,
+    PostgresTransactionContext,
+    TransactionCallback,
+
+    // Health check types
+    HealthCheckResult,
+
+    // Event hooks
+    HookContext,
+    RepositoryHooks,
 
     // Repository options
     MongoRepositoryOptions,

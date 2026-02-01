@@ -410,7 +410,7 @@ Contributors are recognized in:
 ## 📞 Questions?
 
 - 💬 [GitHub Discussions](https://github.com/CISCODE-MA/DatabaseKit/discussions)
-- 📧 Email: info@ciscode.com
+- 📧 Email: info@ciscod.com
 
 ---
 
